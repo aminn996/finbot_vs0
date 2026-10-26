@@ -1,0 +1,131 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://finaibot.local/schemas/strategy-1.0.json",
+  "title": "FinAIBot versioned strategy format 1.0",
+  "description": "Validated strategy data. The current M1 executor supports only its legacy rule subset; future sections are rejected at the runtime execution boundary until implemented.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "version", "created_at", "pair", "timeframe", "entry_rules", "exit_rules"],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "id": {"type": "string", "minLength": 1},
+    "version": {"type": "string", "minLength": 1, "pattern": "^\\S+$"},
+    "created_at": {"type": "string", "format": "date-time"},
+    "parent_version": {"type": ["string", "null"], "minLength": 1, "pattern": "^\\S+$"},
+    "pair": {"type": "string", "pattern": "^[A-Z]{6}$"},
+    "timeframe": {"enum": ["1m", "5m", "15m", "30m", "1h", "4h", "1d", "m1", "m5", "m15", "m30", "h1", "h4", "d1"]},
+    "entry_rules": {"type": "array", "items": {"$ref": "#/$defs/entryRule"}},
+    "exit_rules": {"type": "array", "items": {"$ref": "#/$defs/exitRule"}},
+    "indicators": {"type": "array", "items": {"$ref": "#/$defs/indicator"}},
+    "stop_loss": {"type": ["number", "null"], "exclusiveMinimum": 0},
+    "take_profit": {"type": ["number", "null"], "exclusiveMinimum": 0},
+    "risk_reward": {"$ref": "#/$defs/riskReward"},
+    "position_size": {"type": "number", "exclusiveMinimum": 0},
+    "position_sizing": {"$ref": "#/$defs/positionSizing"},
+    "trend_filters": {"type": "array", "items": {"$ref": "#/$defs/trendFilter"}},
+    "volatility_filters": {"type": "array", "items": {"$ref": "#/$defs/volatilityFilter"}},
+    "market_filters": {"type": "array", "items": {"$ref": "#/$defs/marketFilter"}},
+    "allowed_sessions": {"type": "array", "items": {"$ref": "#/$defs/session"}},
+    "invalidation_conditions": {"type": "array", "items": {"$ref": "#/$defs/condition"}},
+    "capital_protection": {"$ref": "#/$defs/capitalProtection"},
+    "metadata": {"type": "object", "properties": {"side": {"enum": ["long", "short"]}}, "additionalProperties": true}
+  },
+  "oneOf": [
+    {"required": ["position_size"], "not": {"required": ["position_sizing"]}},
+    {"required": ["position_sizing"], "not": {"required": ["position_size"]}}
+  ],
+  "$defs": {
+    "entryRule": {
+      "oneOf": [
+        {"type": "object", "additionalProperties": false, "required": ["type"], "properties": {"type": {"const": "always"}}},
+        {"$ref": "#/$defs/valueRule"}
+      ]
+    },
+    "valueRule": {
+      "type": "object", "additionalProperties": false, "required": ["type", "value"],
+      "properties": {
+        "type": {"enum": ["close_above", "close_below", "crosses_above", "crosses_below"]},
+        "value": {"type": "number"}
+      }
+    },
+    "exitRule": {
+      "type": "object", "additionalProperties": false, "required": ["type", "value"],
+      "properties": {"type": {"const": "bars"}, "value": {"type": "integer", "minimum": 1}}
+    },
+    "jsonParameters": {"type": "object", "additionalProperties": true},
+    "indicator": {
+      "type": "object", "additionalProperties": false, "required": ["name", "parameters"],
+      "properties": {
+        "name": {"enum": ["sma", "ema", "rsi", "atr", "macd", "bollinger_bands"]},
+        "parameters": {"$ref": "#/$defs/jsonParameters"}
+      }
+    },
+    "riskReward": {
+      "type": "object", "additionalProperties": false, "required": ["minimum_ratio"],
+      "properties": {"minimum_ratio": {"type": "number", "exclusiveMinimum": 0}, "enforce": {"type": "boolean"}},
+      "allOf": [{"if": {"properties": {"enforce": {"const": true}}}, "then": {"required": ["minimum_ratio"]}}]
+    },
+    "positionSizing": {
+      "type": "object", "additionalProperties": false, "required": ["mode", "value"],
+      "properties": {
+        "mode": {"enum": ["fixed_units", "risk_fraction", "equity_percent"]},
+        "value": {"type": "number", "exclusiveMinimum": 0}
+      },
+      "allOf": [
+        {"if": {"properties": {"mode": {"const": "risk_fraction"}}}, "then": {"properties": {"value": {"maximum": 1}}}},
+        {"if": {"properties": {"mode": {"const": "equity_percent"}}}, "then": {"properties": {"value": {"maximum": 100}}}}
+      ]
+    },
+    "filter": {
+      "type": "object", "additionalProperties": false, "required": ["type", "parameters"],
+      "properties": {
+        "type": {"type": "string", "minLength": 1},
+        "parameters": {"$ref": "#/$defs/jsonParameters"}
+      }
+    },
+    "trendFilter": {
+      "allOf": [
+        {"$ref": "#/$defs/filter"},
+        {"properties": {"type": {"enum": ["sma", "ema", "adx"]}}}
+      ]
+    },
+    "volatilityFilter": {
+      "allOf": [
+        {"$ref": "#/$defs/filter"},
+        {"properties": {"type": {"enum": ["atr", "bollinger_width", "atr_percentile"]}}}
+      ]
+    },
+    "marketFilter": {
+      "allOf": [
+        {"$ref": "#/$defs/filter"},
+        {"properties": {"type": {"enum": ["spread", "news", "liquidity", "day_of_week"]}}}
+      ]
+    },
+    "session": {
+      "type": "object", "additionalProperties": false, "required": ["name", "start", "end"],
+      "properties": {
+        "name": {"enum": ["tokyo", "london", "new_york", "london_new_york_overlap"]},
+        "start": {"type": "string", "pattern": "^(?:[01]\\d|2[0-3]):[0-5]\\d$"},
+        "end": {"type": "string", "pattern": "^(?:[01]\\d|2[0-3]):[0-5]\\d$"},
+        "timezone": {"type": "string", "minLength": 1}
+      }
+    },
+    "condition": {
+      "type": "object", "additionalProperties": false, "required": ["type", "parameters"],
+      "properties": {
+        "type": {"enum": ["opposite_signal", "time_expiry", "max_drawdown", "data_quality"]},
+        "parameters": {"$ref": "#/$defs/jsonParameters"}
+      }
+    },
+    "capitalProtection": {
+      "type": "object", "additionalProperties": false,
+      "required": ["daily_preventive_stop_pct", "daily_loss_cap_pct", "total_preventive_stop_pct", "total_loss_cap_pct"],
+      "properties": {
+        "daily_preventive_stop_pct": {"type": "number", "exclusiveMinimum": 0, "maximum": 1},
+        "daily_loss_cap_pct": {"type": "number", "exclusiveMinimum": 0, "maximum": 1},
+        "total_preventive_stop_pct": {"type": "number", "exclusiveMinimum": 0, "maximum": 1},
+        "total_loss_cap_pct": {"type": "number", "exclusiveMinimum": 0, "maximum": 1}
+      }
+    }
+  }
+}
